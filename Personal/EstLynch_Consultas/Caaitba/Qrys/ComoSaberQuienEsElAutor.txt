@@ -1,0 +1,17 @@
+SELECT 
+    obj.name AS [Nombre de la Vista], 
+    ep.value AS [Autor Original (Propiedad Extendida)],
+    obj.create_date AS [Fecha y Hora de Creación] -- Sin el CAST a DATE para conservar la hora
+FROM sys.extended_properties AS ep
+INNER JOIN sys.views AS obj ON ep.major_id = obj.object_id
+WHERE ep.name = 'MS_Description' 
+  AND obj.name LIKE 'Lynch_CAAITBA%';
+
+
+SELECT 
+    name, 
+    type_desc, 
+    create_date, 
+    modify_date
+FROM sys.objects 
+WHERE name IN ('Lynch_CAAITBA_JUBICONC', 'Lynch_CAAITBA_JUBILADO', 'Lynch_CAAITBA_TOTALES');

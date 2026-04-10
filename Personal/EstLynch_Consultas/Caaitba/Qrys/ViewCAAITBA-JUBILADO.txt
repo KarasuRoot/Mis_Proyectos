@@ -1,0 +1,81 @@
+WITH UltimaLiquidacionPorFecha AS (
+    SELECT 
+        d.leg_numero, 
+        MAX(d.ndet_periodo) as max_periodo
+    FROM nov_det d
+    WHERE d.con_codigo = '0002'
+    GROUP BY d.leg_numero
+),
+LiqIdentificada AS (
+    SELECT 
+        d.leg_numero, 
+        MAX(d.liq_nroint) as liq_nroint 
+    FROM nov_det d
+    INNER JOIN UltimaLiquidacionPorFecha f ON d.leg_numero = f.leg_numero AND d.ndet_periodo = f.max_periodo
+    WHERE d.con_codigo = '0002'
+    GROUP BY d.leg_numero
+),
+DetalleHaber AS (
+    SELECT 
+        d.leg_numero, 
+        d.liq_nroint,
+        CAST(SUM(d.ndet_importe) AS DECIMAL(18,2)) as ValorHaber
+    FROM nov_det d
+    WHERE d.con_codigo = '0002'
+    GROUP BY d.leg_numero, d.liq_nroint
+),
+NetoLiquidacion AS (
+    SELECT 
+        n.leg_numero, 
+        n.liq_nroint,
+        CAST(n.nov_imptot AS DECIMAL(18,2)) as TotalNeto
+    FROM nov n
+)
+SELECT 
+    ISNULL(CR.car_descrip, 'Sin Categoría') AS Rubro, 
+    
+    RIGHT('000000' + CAST(CAST(L.leg_numero AS BIGINT) / 10 AS VARCHAR), 6) + '/' + 
+    RIGHT(CAST(CAST(L.leg_numero AS BIGINT) AS VARCHAR), 1) AS Legajo,
+    CAST(UPPER(RTRIM(ISNULL(L.leg_apellido, '')) + ' ' + RTRIM(ISNULL(L.leg_nombre, ''))) AS NVARCHAR(70)) AS [Apellido y Nombre],
+    CASE L.leg_tipodoc
+        WHEN 0 THEN 'DNI'
+        WHEN 1 THEN 'LC'
+        WHEN 2 THEN 'LE'
+        WHEN 3 THEN 'Pasaporte'
+        WHEN 4 THEN 'Cert. Migración'
+        ELSE CAST(L.leg_tipodoc AS VARCHAR) + 'CI'
+    END AS TipoDoc,
+    RIGHT('00000000' + CAST(CAST(ISNULL(L.leg_numdoc, 0) AS BIGINT) AS VARCHAR), 8) AS NumDoc,
+    CONVERT(VARCHAR, L.leg_fecnac, 103) AS FechaNac,
+    CASE 
+        WHEN S.sex_descrip LIKE 'MASCULINO%' THEN 'M'
+        WHEN S.sex_descrip LIKE 'FEMENINO%' THEN 'F'
+        ELSE LEFT(ISNULL(S.sex_descrip, 'M'), 1) 
+    END AS Sexo,
+    ISNULL(NL.TotalNeto, 0) AS Importe, 
+    ISNULL(DH.ValorHaber, 0) AS Haber,   
+    
+    CONVERT(VARCHAR, L.leg_fecingr, 103) AS FechaReconocida, 
+    
+    CASE 
+        WHEN SEC.sec_descrip LIKE '%ARQUITECTO%' THEN 'A'
+        WHEN SEC.sec_descrip LIKE '%AGRIMENSOR%' THEN 'G'
+        WHEN SEC.sec_descrip LIKE '%INGENIERO%' THEN 'I'
+        WHEN SEC.sec_descrip LIKE '%TECNICO%' THEN 'T'
+        ELSE LEFT(ISNULL(SEC.sec_descrip, ''), 1) 
+    END AS CodProf,
+    -- Columna PORC eliminada satisfactoriamente
+    L.bco_sucursal AS SUC_BCO,
+    LEFT(L.leg_ctaban, 10) AS Cuenta,
+    
+    CONVERT(VARCHAR, L.leg_fecing, 103) AS FechIngreso, 
+    
+    L.bco_codigo AS BCO_ID
+FROM leg L
+INNER JOIN LiqIdentificada LI ON L.leg_numero = LI.leg_numero
+LEFT JOIN DetalleHaber DH ON LI.leg_numero = DH.leg_numero AND LI.liq_nroint = DH.liq_nroint
+LEFT JOIN NetoLiquidacion NL ON LI.leg_numero = NL.leg_numero AND LI.liq_nroint = NL.liq_nroint
+LEFT JOIN sexos S ON L.leg_sexo = S.sex_codigo
+LEFT JOIN sec SEC ON L.sec_codigo = SEC.sec_codigo
+LEFT JOIN car CR ON L.car_codigo = CR.car_codigo
+ORDER BY CAST(L.leg_numero AS BIGINT);

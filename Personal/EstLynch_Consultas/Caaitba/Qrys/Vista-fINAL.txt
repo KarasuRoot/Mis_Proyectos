@@ -1,0 +1,115 @@
+/* AUTOR: Eugenio D. Deluca
+   FECHA: 2026
+   SISTEMA: Vistas de Interfaz CAAITBA
+   MODIFICACIÓN: 
+   1. Se prioriza el importe calculado (ndet_impcal) sobre el grabado (ndet_importe).
+   2. Se elimina el filtro de estado para usar siempre el último período cronológico.
+*/
+
+IF EXISTS (
+    SELECT 1 FROM sys.views WHERE name IN ('Lynch_CAAITBA_JUBICONC', 'Lynch_CAAITBA_JUBILADO', 'Lynch_CAAITBA_TOTALES')
+)
+BEGIN
+    PRINT 'YA EXISTEN LAS VISTAS. Procediendo a actualizarlas...';
+    DROP VIEW Lynch_CAAITBA_JUBICONC;
+    DROP VIEW Lynch_CAAITBA_JUBILADO;
+    DROP VIEW Lynch_CAAITBA_TOTALES;
+END
+
+BEGIN TRY
+    -- VISTA 1: Lynch_CAAITBA_JUBICONC
+    EXEC('
+    CREATE VIEW Lynch_CAAITBA_JUBICONC AS
+    /* Build-ID: [EDD - RPI - 2026] */
+    WITH UltimaLiq AS (
+        SELECT TOP 1 liq_nroint 
+        FROM LIQ 
+        ORDER BY liq_periodo DESC, liq_nroint DESC
+    ),
+    SumaDetalle AS (
+        SELECT 
+            leg_numero, 
+            con_codigo, 
+            SUM(ISNULL(NULLIF(ndet_impcal, 0), ndet_importe)) AS ImporteCalculado
+        FROM nov_det 
+        WHERE liq_nroint = (SELECT liq_nroint FROM UltimaLiq)
+          AND con_codigo <> ''0000''
+        GROUP BY leg_numero, con_codigo
+    )
+    SELECT 
+        CAST(UPPER(RTRIM(ISNULL(L.leg_apellido, '''')) + '' '' + RTRIM(ISNULL(L.leg_nombre, ''''))) AS NVARCHAR(15)) AS Nombre,
+        RIGHT(SPACE(8) + RIGHT(''000000'' + CAST(CAST(L.leg_numero AS BIGINT) / 10 AS VARCHAR), 6) + ''/'' + RIGHT(CAST(CAST(L.leg_numero AS BIGINT) AS VARCHAR), 1), 8) AS Legajo,
+        CAST(RIGHT(''000'' + CAST(CAST(S.con_codigo AS INT) AS VARCHAR), 3) AS NVARCHAR(3)) AS Concepto,
+        CAST(L.car_codigo AS NVARCHAR(2)) AS Rubro,
+        CAST(ROUND(S.ImporteCalculado, 2) AS FLOAT) AS Importe
+    FROM SumaDetalle S
+    INNER JOIN leg L ON S.leg_numero = L.leg_numero;
+    ');
+
+    -- VISTA 2: Lynch_CAAITBA_JUBILADO
+    EXEC('
+    CREATE VIEW Lynch_CAAITBA_JUBILADO AS
+    /* Build-ID: [EDD - RPI - 2026] */
+    WITH UltimaLiq AS (
+        SELECT TOP 1 liq_nroint FROM LIQ ORDER BY liq_periodo DESC, liq_nroint DESC
+    ),
+    HaberActual AS (
+        SELECT leg_numero, SUM(ISNULL(NULLIF(ndet_impcal, 0), ndet_importe)) as ValorHaber
+        FROM nov_det 
+        WHERE con_codigo = ''0002'' AND liq_nroint = (SELECT liq_nroint FROM UltimaLiq)
+        GROUP BY leg_numero
+    )
+    SELECT 
+        CAST(L.car_codigo AS NVARCHAR(2)) AS Rubro, 
+        RIGHT(SPACE(8) + RIGHT(''000000'' + CAST(CAST(L.leg_numero AS BIGINT) / 10 AS VARCHAR), 6) + ''/'' + RIGHT(CAST(CAST(L.leg_numero AS BIGINT) AS VARCHAR), 1), 8) AS Legajo,
+        CAST(UPPER(RTRIM(ISNULL(L.leg_apellido, '''')) + '' '' + RTRIM(ISNULL(L.leg_nombre, ''''))) AS NVARCHAR(35)) AS Nombre,
+        CAST(CASE L.leg_tipodoc WHEN 2 THEN ''1'' WHEN 1 THEN ''2'' WHEN 0 THEN ''3'' ELSE ''4'' END AS NVARCHAR(1)) AS TipoDoc,
+        RIGHT(''00000000'' + CAST(CAST(ISNULL(L.leg_numdoc, 0) AS BIGINT) AS VARCHAR), 8) AS NumDoc,
+        CONVERT(VARCHAR(10), L.leg_fecnac, 103) AS FechaNac,
+        CAST(CASE WHEN S.sex_descrip LIKE ''MASC%'' THEN ''M'' ELSE ''F'' END AS NVARCHAR(1)) AS Sexo,
+        CAST(ISNULL(ROUND(N.nov_imptot, 2), 0) AS FLOAT) AS Importe, 
+        CAST(ISNULL(ROUND(HA.ValorHaber, 2), 0) AS FLOAT) AS Haber,
+        CONVERT(VARCHAR(10), L.leg_fecing, 103) AS FechaPago,
+        CAST(CASE WHEN SEC.sec_descrip LIKE ''%ARQU%'' THEN ''A'' WHEN SEC.sec_descrip LIKE ''%AGRI%'' THEN ''G'' WHEN SEC.sec_descrip LIKE ''%INGE%'' THEN ''I'' ELSE ''T'' END AS NVARCHAR(2)) AS CodProf,
+        CAST(L.bco_sucursal AS NVARCHAR(4)) AS SUC_BCO,
+        CAST(LEFT(L.leg_ctaban, 10) AS NVARCHAR(10)) AS CuentaBanc,
+        CONVERT(VARCHAR(10), L.leg_fecing, 103) AS FechOrigen, 
+        CAST(L.bco_codigo AS NCHAR(10)) AS BCO_ID
+    FROM leg L
+    INNER JOIN nov N ON L.leg_numero = N.leg_numero
+    INNER JOIN UltimaLiq UL ON N.liq_nroint = UL.liq_nroint
+    LEFT JOIN HaberActual HA ON L.leg_numero = HA.leg_numero
+    LEFT JOIN sexos S ON L.leg_sexo = S.sex_codigo
+    LEFT JOIN sec SEC ON L.sec_codigo = SEC.sec_codigo;
+    ');
+
+    -- VISTA 3: Lynch_CAAITBA_TOTALES
+    EXEC('
+    CREATE VIEW Lynch_CAAITBA_TOTALES AS
+    /* Build-ID: [EDD - RPI - 2026] */
+    WITH UltimaLiq AS (
+        SELECT TOP 1 liq_nroint FROM LIQ ORDER BY liq_periodo DESC, liq_nroint DESC
+    )
+    SELECT 
+        RIGHT(SPACE(8) + RIGHT(''000000'' + CAST(CAST(L.leg_numero AS BIGINT) / 10 AS VARCHAR), 6) + ''/'' + RIGHT(CAST(CAST(L.leg_numero AS BIGINT) AS VARCHAR), 1), 8) AS Legajo,
+        CAST(L.car_codigo AS NVARCHAR(2)) AS Rubro,
+        CAST(UPPER(ISNULL(RTRIM(L.leg_apellido), '''') + '' '' + ISNULL(RTRIM(L.leg_nombre), '''')) AS NVARCHAR(25)) AS Nombre,
+        CAST(ROUND(N.nov_imptot, 2) AS FLOAT) AS Importe,
+        CAST(L.bco_sucursal AS NVARCHAR(4)) AS Suc_bco
+    FROM leg L
+    INNER JOIN nov N ON L.leg_numero = N.leg_numero
+    INNER JOIN UltimaLiq UL ON N.liq_nroint = UL.liq_nroint;
+    ');
+
+    -- REGISTRO DE PROPIEDADES EXTENDIDAS
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'Eugenio D. Deluca', @level0type = N'SCHEMA', @level0name = 'dbo', @level1type = N'VIEW', @level1name = 'Lynch_CAAITBA_JUBICONC';
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'Eugenio D. Deluca', @level0type = N'SCHEMA', @level0name = 'dbo', @level1type = N'VIEW', @level1name = 'Lynch_CAAITBA_JUBILADO';
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'Eugenio D. Deluca', @level0type = N'SCHEMA', @level0name = 'dbo', @level1type = N'VIEW', @level1name = 'Lynch_CAAITBA_TOTALES';
+
+    PRINT 'Vistas creadas con éxito.';
+END TRY
+BEGIN CATCH
+    PRINT 'ERROR: No se pudieron crear las vistas.';
+    PRINT ERROR_MESSAGE();
+END CATCH
+GO

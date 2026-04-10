@@ -1,0 +1,18 @@
+//Para encontrar un campo específico en una base de datos
+DECLARE @MiColumna NVARCHAR(100) = 'leg_numero'; 
+DECLARE @sql NVARCHAR(MAX) = '';
+
+SELECT @sql = @sql + 'SELECT CAST(TABLE_CATALOG AS VARCHAR(100)) AS BaseDatos, 
+                             CAST(TABLE_NAME AS VARCHAR(100)) AS Tabla, 
+                             CAST(COLUMN_NAME AS VARCHAR(100)) AS Columna 
+                      FROM ' + QUOTENAME(name) + '.INFORMATION_SCHEMA.COLUMNS 
+                      WHERE COLUMN_NAME = ''' + @MiColumna + ''' UNION ALL '
+FROM sys.databases 
+WHERE state = 0 
+  AND name NOT IN ('master', 'tempdb', 'model', 'msdb');
+
+IF LEN(@sql) > 0
+BEGIN
+    SET @sql = LEFT(@sql, LEN(@sql) - 10) + ' ORDER BY BaseDatos, Tabla';
+    EXEC sp_executesql @sql;
+END

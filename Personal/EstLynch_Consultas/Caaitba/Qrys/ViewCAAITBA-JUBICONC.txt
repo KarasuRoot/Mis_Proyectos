@@ -1,0 +1,28 @@
+WITH UltimaLiquidacion AS (
+    -- Obtenemos el ID de liquidación más alto para asegurar que sea la de Julio (o la última procesada)
+    SELECT 
+        d.leg_numero, 
+        MAX(d.liq_nroint) as max_liq_nroint
+    FROM nov_det d
+    WHERE d.con_codigo NOT IN ('0000', '') -- Filtramos basura y códigos vacíos
+      AND d.ndet_importe <> 0
+    GROUP BY d.leg_numero
+)
+SELECT 
+    CAST(UPPER(RTRIM(ISNULL(L.leg_apellido, '')) + ' ' + RTRIM(ISNULL(L.leg_nombre, ''))) AS NVARCHAR(70)) AS [Apellido y Nombre],
+    -- Formato de legajo 000000/X
+    RIGHT('000000' + CAST(CAST(L.leg_numero AS BIGINT) / 10 AS VARCHAR), 6) + '/' + 
+    RIGHT(CAST(CAST(L.leg_numero AS BIGINT) AS VARCHAR), 1) AS Legajo,
+    
+    -- Transformamos '0002' en '002'
+    -- Convertimos a INT para limpiar ceros a la izquierda y rellenamos a 3 posiciones
+    RIGHT('000' + CAST(CAST(D.con_codigo AS INT) AS VARCHAR), 3) AS Concepto,
+    
+    ISNULL(CR.car_descrip, 'Sin Categoría') AS Rubro,
+    CAST(D.ndet_importe AS DECIMAL(18,2)) AS Importe
+FROM leg L
+INNER JOIN UltimaLiquidacion UL ON L.leg_numero = UL.leg_numero
+INNER JOIN nov_det D ON UL.leg_numero = D.leg_numero AND UL.max_liq_nroint = D.liq_nroint
+LEFT JOIN car CR ON L.car_codigo = CR.car_codigo
+WHERE D.con_codigo <> '0000'
+ORDER BY CAST(L.leg_numero AS BIGINT);

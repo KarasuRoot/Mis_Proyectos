@@ -1,0 +1,26 @@
+WITH UltimaLiquidacion AS (
+    SELECT L.leg_numero, ULT_LIQ.nov_imptot, ULT_LIQ.liq_nroint
+    FROM leg L
+    CROSS APPLY (
+        SELECT TOP 1 n.nov_imptot, n.liq_nroint
+        FROM nov n
+        WHERE n.leg_numero = L.leg_numero
+          AND n.nov_imptot > 1 
+        ORDER BY n.nov_fecmod DESC, n.liq_nroint DESC 
+    ) AS ULT_LIQ
+)
+SELECT 
+    RIGHT('000000' + CAST(CAST(L.leg_numero AS BIGINT) / 10 AS VARCHAR), 6) + '/' + 
+    RIGHT(CAST(CAST(L.leg_numero AS BIGINT) AS VARCHAR), 1) AS Legajo,
+    
+    -- Cambio aquí: Traemos la descripción de la tabla car
+    ISNULL(C.car_descrip, 'Sin Categoría') AS Rubro,
+    
+    CAST(UPPER(ISNULL(TRIM(L.leg_apellido), '') + ' ' + ISNULL(TRIM(L.leg_nombre), '')) AS NVARCHAR(70)) AS [Apellido y Nombre],
+    FORMAT(UL.nov_imptot, '#,0.00', 'de-DE') AS Importe,
+    L.bco_sucursal AS Suc_bco
+FROM leg L
+INNER JOIN UltimaLiquidacion UL ON L.leg_numero = UL.leg_numero
+-- Unión con la tabla de cargos
+LEFT JOIN car C ON L.car_codigo = C.car_codigo 
+ORDER BY CAST(L.leg_numero AS BIGINT);
