@@ -1,0 +1,2 @@
+UPDATE leg 
+SET leg_confidencial = 0;
