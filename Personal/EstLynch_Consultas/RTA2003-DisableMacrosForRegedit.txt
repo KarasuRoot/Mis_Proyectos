@@ -1,0 +1,7 @@
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Office\11.0\Access\Security - se crea Valor DWORD 32 byts Con nombre "Level" y valor 1
+HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Office\11.0\Access\Security (igual)
+REINICAR PC
+
+
+
+Busqueda en google: Setting disable Microsoft Access 2003 runtime Macro Security Settings using the registry
